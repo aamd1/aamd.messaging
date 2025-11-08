@@ -11,8 +11,10 @@ public class RequeueDeadLetterMessagesCommandHandler
         _client = client;
     }
 
-    public async Task HandleAsync(string topicName, string subscriptionName, string messageSubject,
+    public async Task HandleAsync(string topicName, string subscriptionName, string? messageSubject,
         int maxMessages = 100,
+        int maxMessagePerBatch = 100,
+        int timeoutSeconds = 60,
         CancellationToken cancellationToken = default)
     {
         var receiver = _client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions()
@@ -21,28 +23,33 @@ public class RequeueDeadLetterMessagesCommandHandler
             ReceiveMode = ServiceBusReceiveMode.PeekLock
         });
 
-
         var sender = _client.CreateSender(topicName);
-        var receivedMessages = 0;
-        while (!cancellationToken.IsCancellationRequested)
+        int processed = 0;
+        while (!cancellationToken.IsCancellationRequested && processed < maxMessages)
         {
-            var message =
-                await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(60), cancellationToken);
-
-            receivedMessages += 1;
-
-            if (message.Subject != messageSubject)
+            var remaining = maxMessages - processed;
+            var take = Math.Min(maxMessagePerBatch, remaining);
+            var messages = await receiver.ReceiveMessagesAsync(take, TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
+            if (messages.Count == 0)
             {
-                continue;
+                Console.WriteLine("No more messages in DLQ matching criteria");
+                break;
             }
 
-            Console.WriteLine($"Requeueing message {message.MessageId} {receivedMessages}/{maxMessages}");
-            await sender.SendMessageAsync(new ServiceBusMessage(message), cancellationToken);
-            await receiver.CompleteMessageAsync(message, cancellationToken);
-
-            if (receivedMessages >= maxMessages)
+            foreach (var message in messages)
             {
-                break;
+                if (messageSubject != null && !string.Equals(message.Subject, messageSubject, StringComparison.Ordinal))
+                {
+                    // leave non-matching message locked to timeout; explicitly Abandon to release sooner
+                    await receiver.AbandonMessageAsync(message, cancellationToken: cancellationToken);
+                    continue;
+                }
+
+                Console.WriteLine($"Requeueing message {message.MessageId} {processed + 1}/{maxMessages}");
+                await sender.SendMessageAsync(new ServiceBusMessage(message), cancellationToken);
+                await receiver.CompleteMessageAsync(message, cancellationToken);
+                processed++;
+                if (processed >= maxMessages) break;
             }
         }
     }

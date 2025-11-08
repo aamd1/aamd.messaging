@@ -11,9 +11,11 @@ public class PurgeDeadLetterQueueCommandHandler
         _client = client;
     }
 
-    public async Task HandleAsync(string topicName, string subscriptionName, string messageSubject,
+    public async Task HandleAsync(string topicName, string subscriptionName, string? messageSubject,
         int maxMessages = 100,
-        int maxMessagePerBatch = 100, CancellationToken cancellationToken = default)
+        int maxMessagePerBatch = 100,
+        int timeoutSeconds = 60,
+        CancellationToken cancellationToken = default)
     {
         var receiver = _client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions()
         {
@@ -26,35 +28,30 @@ public class PurgeDeadLetterQueueCommandHandler
             maxMessagePerBatch = maxMessages;
         }
 
-        int receivedMessages = 0;
-        while (!cancellationToken.IsCancellationRequested)
+        int completedCount = 0;
+        while (!cancellationToken.IsCancellationRequested && completedCount < maxMessages)
         {
-            var messages =
-                await receiver.ReceiveMessagesAsync(maxMessagePerBatch, TimeSpan.FromSeconds(60),
-                    CancellationToken.None);
+            var remaining = maxMessages - completedCount;
+            var take = Math.Min(maxMessagePerBatch, remaining);
+            var messages = await receiver.ReceiveMessagesAsync(take, TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
             if (messages.Count == 0)
             {
-                Console.WriteLine("No more messages");
+                Console.WriteLine("No more messages in DLQ matching criteria");
                 break;
             }
 
-            receivedMessages += messages.Count;
-
             foreach (var message in messages)
             {
-                if (message.Subject != messageSubject)
+                if (messageSubject != null && !string.Equals(message.Subject, messageSubject, StringComparison.Ordinal))
                 {
+                    // skip non-matching subjects
                     continue;
                 }
 
                 await receiver.CompleteMessageAsync(message, cancellationToken);
-                Console.WriteLine($"Completed message {message.MessageId} {receivedMessages}/{maxMessages}");
-            }
-
-            if (receivedMessages >= maxMessages)
-            {
-                Console.WriteLine($"Reached max messages of {maxMessages}, stopping");
-                break;
+                completedCount++;
+                Console.WriteLine($"Completed message {message.MessageId} {completedCount}/{maxMessages}");
+                if (completedCount >= maxMessages) break;
             }
         }
     }
