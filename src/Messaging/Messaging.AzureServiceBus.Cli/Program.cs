@@ -1,127 +1,81 @@
 ﻿namespace Messaging.AzureServiceBus.Cli;
 
 using Azure.Messaging.ServiceBus;
+using Cocona;
 
 class Program
 {
-    private static int ParseInt(IDictionary<string, string> args, string key, int defaultValue)
-    {
-        return args.TryGetValue(key, out var v) && int.TryParse(v, out var i) ? i : defaultValue;
-    }
-
-    private static bool HasFlag(IDictionary<string, string> args, string key)
-    {
-        return args.ContainsKey(key);
-    }
-
-    private static IDictionary<string, string> ParseArgs(string[] argv)
-    {
-        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < argv.Length; i++)
-        {
-            var token = argv[i];
-            if (token.StartsWith("--"))
-            {
-                var key = token.Substring(2);
-                if (i + 1 < argv.Length && !argv[i + 1].StartsWith("--"))
-                {
-                    dict[key] = argv[++i];
-                }
-                else
-                {
-                    dict[key] = "true"; // flag
-                }
-            }
-            else if (!dict.ContainsKey("_cmd"))
-            {
-                dict["_cmd"] = token;
-            }
-        }
-        return dict;
-    }
-
-    private static void PrintUsage()
-    {
-        Console.WriteLine("Azure Service Bus CLI");
-        Console.WriteLine("Usage:");
-        Console.WriteLine("  asb purge-dlq --conn <connection> --topic <name> --sub <name> [--subject <text>] [--max <n>] [--batch <n>] [--timeout <s>]");
-        Console.WriteLine("  asb requeue-dl --conn <connection> --topic <name> --sub <name> [--subject <text>] [--max <n>] [--batch <n>] [--timeout <s>]");
-        Console.WriteLine("  asb peek --conn <connection> --topic <name> --sub <name> [--dlq] [--max <n>] [--batch <n>] [--timeout <s>]");
-        Console.WriteLine("  asb dump --conn <connection> --topic <name> --sub <name> [--dlq] [--subject <text>] [--max <n>] [--batch <n>] [--timeout <s>] [--dest <path>]");
-        Console.WriteLine();
-    }
-
-    static async Task<int> Main(string[] argv)
+    static async Task<int> Main(string[] args)
     {
         try
         {
-            if (argv.Length == 0)
+            var builder = CoconaApp.CreateBuilder();
+            var app = builder.Build();
+
+            app.AddCommand("purge-dlq", async (
+                [Option("conn", Description = "Service Bus connection string")] string? conn,
+                [Option("topic", Description = "Topic name")] string? topic,
+                [Option("sub", Description = "Subscription name")] string? sub,
+                [Option("subject", Description = "Filter messages by exact Subject")] string? subject,
+                [Option("max", Description = "Max messages to process")] int max = 100,
+                [Option("batch", Description = "Max messages per batch")] int batch = 100,
+                [Option("timeout", Description = "Receive timeout in seconds")] int timeout = 60,
+                CancellationToken cancellationToken = default) =>
             {
-                PrintUsage();
-                return 1;
-            }
-
-            var parsed = ParseArgs(argv);
-            if (!parsed.TryGetValue("_cmd", out var cmd))
-            {
-                Console.Error.WriteLine("Missing command");
-                PrintUsage();
-                return 1;
-            }
-
-            if (!parsed.TryGetValue("conn", out var conn))
-            {
-                Console.Error.WriteLine("Missing required option: --conn");
-                return 2;
-            }
-
-            if (!parsed.TryGetValue("topic", out var topic))
-            {
-                Console.Error.WriteLine("Missing required option: --topic");
-                return 3;
-            }
-
-            if (!parsed.TryGetValue("sub", out var sub))
-            {
-                Console.Error.WriteLine("Missing required option: --sub");
-                return 4;
-            }
-
-            var subject = parsed.TryGetValue("subject", out var subj) ? subj : null;
-            var max = ParseInt(parsed, "max", 100);
-            var batch = ParseInt(parsed, "batch", Math.Min(100, max));
-            var timeout = ParseInt(parsed, "timeout", 60);
-            var useDlq = HasFlag(parsed, "dlq");
-            var dest = parsed.TryGetValue("dest", out var d) ? d : null;
-
-            await using var client = new ServiceBusClient(conn);
-
-            switch (cmd.ToLowerInvariant())
-            {
-                case "purge-dlq":
+                if (string.IsNullOrWhiteSpace(conn) || string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(sub))
                 {
-                    var handler = new PurgeDeadLetterQueueCommandHandler(client);
-                    await handler.HandleAsync(topic, sub, subject, max, batch, timeout, CancellationToken.None);
-                    break;
+                    Console.Error.WriteLine("Required options: --conn, --topic, --sub");
+                    return;
                 }
-                case "requeue-dl":
-                {
-                    var handler = new RequeueDeadLetterMessagesCommandHandler(client);
-                    await handler.HandleAsync(topic, sub, subject, max, batch, timeout, CancellationToken.None);
-                    break;
-                }
-                case "peek":
-                {
-                    var handler = new PeekMessagesCommandHandler(client);
-                    await handler.HandleAsync(topic, sub, useDlq, max, batch, timeout, CancellationToken.None);
-                    break;
-                }
-                default:
-                    Console.Error.WriteLine($"Unknown command: {cmd}");
-                    PrintUsage();
-                    return 5;
-            }
+                await using var client = new ServiceBusClient(conn);
+                var handler = new PurgeDeadLetterQueueCommandHandler(client);
+                await handler.HandleAsync(topic!, sub!, subject, max, batch, timeout, cancellationToken);
+            })
+            .WithDescription("Purge (complete) messages from the dead-letter queue matching optional criteria");
 
+            app.AddCommand("requeue-dl", async (
+                [Option("conn", Description = "Service Bus connection string")] string? conn,
+                [Option("topic", Description = "Topic name")] string? topic,
+                [Option("sub", Description = "Subscription name")] string? sub,
+                [Option("subject", Description = "Only requeue messages with this exact Subject")] string? subject,
+                [Option("max", Description = "Max messages to process")] int max = 100,
+                [Option("batch", Description = "Max messages per batch")] int batch = 100,
+                [Option("timeout", Description = "Receive timeout in seconds")] int timeout = 60,
+                CancellationToken cancellationToken = default) =>
+            {
+                if (string.IsNullOrWhiteSpace(conn) || string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(sub))
+                {
+                    Console.Error.WriteLine("Required options: --conn, --topic, --sub");
+                    return;
+                }
+                await using var client = new ServiceBusClient(conn);
+                var handler = new RequeueDeadLetterMessagesCommandHandler(client);
+                await handler.HandleAsync(topic, sub, subject, max, batch, timeout, cancellationToken);
+            })
+            .WithDescription("Requeue messages from the dead-letter queue back to the topic");
+
+            app.AddCommand("peek", async (
+                [Option("conn", Description = "Service Bus connection string")] string? conn,
+                [Option("topic", Description = "Topic name")] string? topic,
+                [Option("sub", Description = "Subscription name")] string? sub,
+                [Option("dlq", Description = "Peek from the dead-letter queue instead of active")] bool dlq = false,
+                [Option("max", Description = "Max messages to peek")] int max = 100,
+                [Option("batch", Description = "Max messages per peek batch")] int batch = 100,
+                [Option("timeout", Description = "Peek timeout in seconds")] int timeout = 60,
+                CancellationToken cancellationToken = default) =>
+            {
+                if (string.IsNullOrWhiteSpace(conn) || string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(sub))
+                {
+                    Console.Error.WriteLine("Required options: --conn, --topic, --sub");
+                    return;
+                }
+                await using var client = new ServiceBusClient(conn);
+                var handler = new PeekMessagesCommandHandler(client);
+                await handler.HandleAsync(topic, sub, dlq, max, batch, timeout, cancellationToken);
+            })
+            .WithDescription("Peek messages from a subscription (active or DLQ)");
+
+            await app.RunAsync();
             return 0;
         }
         catch (Exception e)
