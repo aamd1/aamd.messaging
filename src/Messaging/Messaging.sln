@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Messaging.Abstractions", "M
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Messaging.AzureServiceBus.Cli", "Messaging.AzureServiceBus.Cli\Messaging.AzureServiceBus.Cli.csproj", "{00E92C5F-4EF3-43E8-86E8-562C61DCB6C2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Messaging.AzureServiceBus", "Messaging.AzureServiceBus\Messaging.AzureServiceBus.csproj", "{D4654E02-EB53-4A28-8D94-DFF44CE6C267}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{00E92C5F-4EF3-43E8-86E8-562C61DCB6C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{00E92C5F-4EF3-43E8-86E8-562C61DCB6C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{00E92C5F-4EF3-43E8-86E8-562C61DCB6C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4654E02-EB53-4A28-8D94-DFF44CE6C267}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4654E02-EB53-4A28-8D94-DFF44CE6C267}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4654E02-EB53-4A28-8D94-DFF44CE6C267}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4654E02-EB53-4A28-8D94-DFF44CE6C267}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
