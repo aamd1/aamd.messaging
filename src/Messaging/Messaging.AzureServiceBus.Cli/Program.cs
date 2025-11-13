@@ -24,7 +24,7 @@ class Program
             {
                 if (string.IsNullOrWhiteSpace(conn) || string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(sub))
                 {
-                    Console.Error.WriteLine("Required options: --conn, --topic, --sub");
+                    await Console.Error.WriteLineAsync("Required options: --conn, --topic, --sub");
                     return;
                 }
                 await using var client = new ServiceBusClient(conn);
@@ -33,7 +33,7 @@ class Program
             })
             .WithDescription("Purge (complete) messages from the dead-letter queue matching optional criteria");
 
-            app.AddCommand("requeue-dl", async (
+            app.AddCommand("requeue-dlq", async (
                 [Option("conn", Description = "Service Bus connection string")] string? conn,
                 [Option("topic", Description = "Topic name")] string? topic,
                 [Option("sub", Description = "Subscription name")] string? sub,
@@ -45,7 +45,7 @@ class Program
             {
                 if (string.IsNullOrWhiteSpace(conn) || string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(sub))
                 {
-                    Console.Error.WriteLine("Required options: --conn, --topic, --sub");
+                    await Console.Error.WriteLineAsync("Required options: --conn, --topic, --sub");
                     return;
                 }
                 await using var client = new ServiceBusClient(conn);
@@ -66,7 +66,7 @@ class Program
             {
                 if (string.IsNullOrWhiteSpace(conn) || string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(sub))
                 {
-                    Console.Error.WriteLine("Required options: --conn, --topic, --sub");
+                    await Console.Error.WriteLineAsync("Required options: --conn, --topic, --sub");
                     return;
                 }
                 await using var client = new ServiceBusClient(conn);
